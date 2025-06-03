@@ -3,6 +3,7 @@ import argparse
 import cv2
 import numpy as np
 import torch
+import requests
 
 from models.with_mobilenet import PoseEstimationWithMobileNet
 from modules.keypoints import extract_keypoints, group_keypoints
@@ -87,7 +88,7 @@ def run_demo(net, image_provider, height_size, cpu, track, smooth):
     upsample_ratio = 4
     num_keypoints = Pose.num_kpts
     previous_poses = []
-    delay = 1
+    delay = 0
     for img in image_provider:
         orig_img = img.copy()
         heatmaps, pafs, scale, pad = infer_fast(net, img, height_size, stride, upsample_ratio, cpu)
@@ -116,8 +117,16 @@ def run_demo(net, image_provider, height_size, cpu, track, smooth):
         if track:
             track_poses(previous_poses, current_poses, smooth=smooth)
             previous_poses = current_poses
+        fallen_down_count = 0
         for pose in current_poses:
+            pose: Pose
             pose.draw(img)
+            if pose.is_fallen_down():
+                fallen_down_count += 1
+        print(f'dectected {fallen_down_count} people fallen down.')
+        if fallen_down_count > 0:
+            # TODO: 发送一个http请求到服务器
+            pass
         img = cv2.addWeighted(orig_img, 0.6, img, 0.4, 0)
         for pose in current_poses:
             cv2.rectangle(img, (pose.bbox[0], pose.bbox[1]),
@@ -141,10 +150,10 @@ if __name__ == '__main__':
         description='''Lightweight human pose estimation python demo.
                        This is just for quick results preview.
                        Please, consider c++ demo for the best performance.''')
-    parser.add_argument('--checkpoint-path', type=str, required=True, help='path to the checkpoint')
+    parser.add_argument('--checkpoint-path', type=str, default='./checkpoints/checkpoint_iter_370000.pth', help='path to the checkpoint')
     parser.add_argument('--height-size', type=int, default=256, help='network input layer height size')
     parser.add_argument('--video', type=str, default='', help='path to video file or camera id')
-    parser.add_argument('--images', nargs='+', default='', help='path to input image(s)')
+    parser.add_argument('--images', nargs='+', default='./data/image.png', help='path to input image(s)')
     parser.add_argument('--cpu', action='store_true', help='run network inference on cpu')
     parser.add_argument('--track', type=int, default=1, help='track pose id in video')
     parser.add_argument('--smooth', type=int, default=1, help='smooth pose keypoints')

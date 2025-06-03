@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "name": "image pose",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "D:\\Anaconda3\\envs\\Lightweight\\python.exe",
+            "args": [
+                "--checkpoint-path", "${workspaceFolder}/checkpoints/checkpoint_iter_370000.pth",
+                "--images", "${workspaceFolder}/data/preview.jpg",
+            ],
+            "program": "${workspaceFolder}/demo.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "viedo pose",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "D:\\Anaconda3\\envs\\Lightweight\\python.exe",
+            "args": [
+                "--checkpoint-path", "${workspaceFolder}/checkpoints/checkpoint_iter_370000.pth",
+                "--video", "${workspaceFolder}/data/59789586-1-192.mp4",
+            ],
+            "program": "${workspaceFolder}/demo.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}

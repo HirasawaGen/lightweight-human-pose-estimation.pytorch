@@ -1,3 +1,4 @@
+import math
 import cv2
 import numpy as np
 
@@ -7,16 +8,18 @@ from modules.one_euro_filter import OneEuroFilter
 
 class Pose:
     num_kpts = 18
-    kpt_names = ['nose', 'neck',
+    kpt_names = ('nose', 'neck',
                  'r_sho', 'r_elb', 'r_wri', 'l_sho', 'l_elb', 'l_wri',
                  'r_hip', 'r_knee', 'r_ank', 'l_hip', 'l_knee', 'l_ank',
                  'r_eye', 'l_eye',
-                 'r_ear', 'l_ear']
+                 'r_ear', 'l_ear')
     sigmas = np.array([.26, .79, .79, .72, .62, .79, .72, .62, 1.07, .87, .89, 1.07, .87, .89, .25, .25, .35, .35],
                       dtype=np.float32) / 10.0
     vars = (sigmas * 2) ** 2
     last_id = -1
     color = [0, 224, 255]
+    FALLEN_DOWN_THRESHOLD = math.pi / 6  # 跌倒阈值，单位为角度
+    INVALID_THRESHOLD = 14 # 若只识别到INVALID_THRESHOLD以下个关键点，则认为是无效的，不进行跌倒判断
 
     def __init__(self, keypoints, confidence):
         super().__init__()
@@ -60,7 +63,41 @@ class Pose:
                 cv2.circle(img, (int(x_b), int(y_b)), 3, Pose.color, -1)
             if global_kpt_a_id != -1 and global_kpt_b_id != -1:
                 cv2.line(img, (int(x_a), int(y_a)), (int(x_b), int(y_b)), Pose.color, 2)
+    
+    
+    def __getitem__(self, idx: int | str) -> tuple[float, float]:
+        idx = idx if isinstance(idx, int) else self.kpt_names.index(idx)
+        return self.keypoints[idx][0].item(), self.keypoints[idx][1].item()
+   
+    @property
+    def keypoint_num(self) -> int:
+        return np.count_nonzero(self.keypoints[:, 0] != -1)
 
+    @property
+    def valid(self) -> bool:
+        return self.keypoint_num >= Pose.INVALID_THRESHOLD
+
+    def is_fallen_down(self) -> bool:
+       '''
+       判断是否跌倒
+       :return: True if fell down, False otherwise
+       '''
+       if not self.valid:
+           return False
+       x_neck, y_neck = self['neck']
+       x_l_hip, y_l_hip = self['l_hip']
+       x_r_hip, y_r_hip = self['r_hip']
+       if x_neck == -1 or x_l_hip == -1 or x_r_hip == -1:
+           return False
+       x_hip = (x_l_hip + x_r_hip) / 2
+       y_hip = (y_l_hip + y_r_hip) / 2
+       diff_x = abs(x_hip - x_neck)
+       diff_y = abs(y_hip - y_neck)
+       theta = math.atan2(diff_y, diff_x)
+       if theta < Pose.FALLEN_DOWN_THRESHOLD:
+           return True
+       return False
+    
 
 def get_similarity(a, b, threshold=0.5):
     num_similar_kpt = 0
