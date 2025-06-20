@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import onnxruntime as ort
+import requests
 import time
 import threading
 import subprocess
@@ -20,6 +21,15 @@ ONNX_MODEL = 'human-pose-estimation.onnx'
 
 # RTSP服务器配置
 RTSP_SERVER = 'rtsp://192.168.137.35:8554/live'
+
+# 设备ID
+EQUIPMENT_ID = 'spd123'
+# 服务器url
+API_URL_FORMAT = 'http://9hw15hz74139.vicp.fun/send-email?id={}'
+API_URL = API_URL_FORMAT.format(EQUIPMENT_ID)
+
+ALERT_THRESHOLD = 3.0
+EMAIL_SEND_INTERVAL = 20.0
 
 # 摄像头配置
 CAMERA_DEVICE = '/dev/video21'
@@ -134,7 +144,7 @@ def detect_poses(img, ort_session):
         all_keypoints[kpt_id, 0] = (all_keypoints[kpt_id, 0] * STRIDE / UPSAMPLE_RATIO - pad[1]) / scale
         all_keypoints[kpt_id, 1] = (all_keypoints[kpt_id, 1] * STRIDE / UPSAMPLE_RATIO - pad[0]) / scale
     
-    current_poses = []
+    current_poses: list[Pose] = []
     for n in range(len(pose_entries)):
         if len(pose_entries[n]) == 0:
             continue
@@ -352,6 +362,7 @@ class PoseEstimator(threading.Thread):
         self.running = False
         self.ort_session = None				# ONNX Runtime推理会话
         self.previous_poses = []  			# 用于姿态跟踪，存储上一帧的姿态信息，用于跨帧跟踪
+        self.fallen_time_map = {}
         
     def run(self):
         # 加载ONNX模型
@@ -375,37 +386,47 @@ class PoseEstimator(threading.Thread):
                     break
                     
                 # 姿态估计
-                t1 = time.time()
                 				#调用detect_poses函数进行关键点检测
                 current_poses = detect_poses(frame, self.ort_session)
-                t2 = time.time()
-                inference_time = int((t2 - t1) * 1000)				# 计算推理时间(ms)
                 
                 # 姿态跟踪
                 if len(self.previous_poses) > 0:
                 				#track_poses函数：跨帧关联同一人体的姿态
                     track_poses(self.previous_poses, current_poses, threshold=3, smooth=True)
                 self.previous_poses = current_poses				#存储当前帧姿态用于下一帧跟踪
-                
+                detected_ids = set()
                 # 绘制结果：在图像上绘制检测结果
                 result_img = draw_poses(frame, current_poses, track=True, smooth=True)
                 
                 # 统计有效关键点数量
-                total_keypoints = 0
                 for pose in current_poses:
-                    valid_keypoints = sum(1 for kp in pose.keypoints if kp[0] > 0 and kp[1] > 0)
-                    total_keypoints += valid_keypoints
-                
-                # 添加性能信息
-                cv2.putText(
-                    result_img, 
-                    f'Inference: {inference_time}ms | FPS: {POSE_FPS} | Poses: {len(current_poses)} | KPs: {total_keypoints}', 
-                    (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 
-                    0.7, 
-                    (0, 255, 0), 
-                    2
-                )
+                    pose_id = str(pose.id)
+                    detected_ids.add(pose_id)
+                    # TODO: 如果逻辑没问题的话，就让ai改写成策略模式  补：ai猪脑子写不明白策略模式
+                    if pose.is_fallen_down():
+                        if pose_id not in self.fallen_time_map:
+                            self.fallen_time_map[pose_id] = {
+                                'fallen_time': time.time(),
+                                'email_sent': False
+                            }
+                        else:
+                            fallen_time = self.fallen_time_map[pose_id]['fallen_time']
+                            email_sent = self.fallen_time_map[pose_id]['email_sent']
+                            fallen_during = time.time() - fallen_time
+                            if fallen_during < ALERT_THRESHOLD:
+                                continue
+                            if fallen_during > ALERT_THRESHOLD:
+                                if not email_sent:
+                                    requests.get(API_URL)
+                                    self.fallen_time_map[pose_id]['email_sent'] = True
+                                    self.fallen_time_map[pose_id]['last_alert_time'] = time.time()
+                                else:
+                                    if time.time() - self.fallen_time_map[pose_id]['last_alert_time'] > EMAIL_SEND_INTERVAL:
+                                        requests.get(API_URL)
+                                        self.fallen_time_map[pose_id]['last_alert_time'] = time.time()
+                    else:
+                        if pose_id in self.fallen_time_map:
+                            self.fallen_time_map.pop(pose_id)
                 
                 # 显示结果
                 cv2.imshow('Pose Estimation', result_img)
