@@ -1,6 +1,5 @@
 from typing import Sequence
 import cv2
-import os
 import time
 import numpy as np
 import torch
@@ -21,7 +20,8 @@ from loguru import logger
 # ALERT_THRESHOLD = float(os.environ['ALERT_THRESHOLD'])
 # EMAIL_SEND_INTERVAL = float(os.environ['EMAIL_SEND_INTERVAL'])
 
-VIDEO_PATH = './data/59789586-1-192.mp4'  # 本地测试
+VIDEO_PATH = './data/input.mp4'  # 本地测试
+SAVE_PATH = './result/output.mp4'  # 本地测试
 EQUIPMENT_ID = 'YSU123'
 API_URL_FORMAT = 'https://localhost:8080/send-email?id={}'
 API_URL = API_URL_FORMAT.format(EQUIPMENT_ID)
@@ -33,15 +33,23 @@ to_cuda = True
 display = True
 
 class VideoReader:
-    def __init__(self, device_path: str, fps: int=10):
+    def __init__(self, device_path: str):
         self._device_path = device_path
-        self._fps = fps
         self._managed = False
         self._cap: cv2.VideoCapture
+        self._fps = 0.0
+        self._width = 0
+        self._height = 0
     
     def __enter__(self):
         self._cap = cv2.VideoCapture(self._device_path)
         self._managed = True
+        self._fps = self._cap.get(cv2.CAP_PROP_FPS)
+        self._width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self._height = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        logger.success(f'VideoReader opened successfully: {self._device_path}, {self._width}x{self._height}, {self._fps}fps')
+        self._display_time = time.time()
+        
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if not self._managed:
@@ -66,9 +74,9 @@ class VideoReader:
         ret, frame = self._cap.read()
         if not ret:
             raise StopIteration
-        if self._fps > 0:
-            print(f'frame rate: {self._fps}')
-            time.sleep(1 / self._fps)
+        while time.time() - self._display_time < 1.0 / self._fps:
+            time.sleep(0.001)
+        self._display_time = time.time()
         return frame
 
 
@@ -117,6 +125,7 @@ def main():
     num_keypoints = Pose.num_kpts
     previous_poses: Sequence[Pose] = []
     delay = 0
+    out = cv2.VideoWriter(SAVE_PATH, cv2.VideoWriter_fourcc(*'MP4V'), 30, (reader._width, reader._height))
     for img in reader:
         orig_img = None if not display else img.copy()
         heatmaps, pafs, scale, pad = infer_fast(
@@ -197,6 +206,8 @@ def main():
                 pose.draw(img)
             img = cv2.addWeighted(orig_img, 0.6, img, 0.4, 0)
             for pose in current_poses:
+                if not pose.valid:
+                    continue
                 cv2.rectangle(
                     img,
                     (pose.bbox[0], pose.bbox[1]),
@@ -213,16 +224,18 @@ def main():
                     (0, 0, 255) if pose.is_fallen_down() else (0, 255, 0),
                     1,
                 )
+            out.write(img)
             cv2.imshow('Lightweight Human Pose Estimation', img)
             key = cv2.waitKey(delay)
             if key == 27:  # esc
                 return
             elif key == 32:  # space
                 delay = 0 if delay == 1 else 1
+    out.release()
 
         
 if __name__ == '__main__':
-    reader = VideoReader(VIDEO_PATH, -1)
+    reader = VideoReader(VIDEO_PATH)
     with reader:
         main()
         
