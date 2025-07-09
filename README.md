@@ -6,8 +6,12 @@
 
 以下视频为样例输入1：
 
-<video src="./data/input.mp4" controls="controls" width="640" height="480"></video>
+<video controls>
+    <source src="./data/input.mp4" type="video/mp4">
+</video>
 
 经过模型预测到人体姿态并绘制在视频上，样例输出1如下：
 
-<video src="./result/output.mp4" controls="controls" width="640" height="480"></video>
+<video controls>
+    <source src="./result/output.mp4" type="video/mp4">
+</video>
