@@ -8,4 +8,6 @@
 
 样例输出视频文件为：`.\result\output.mp4`
 
+技术文档：`.\技术文档.pdf`
+
 [点击查看原项目README.md](.\orig_README.md)
