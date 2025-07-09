@@ -4,14 +4,8 @@
 
 新建了`.\main.py`文件，用来检测摄像头或者视频中的人体姿态，如果为跌倒状态，则向远程服务器发送请求，并由远程服务器使用SMTP协议为用户发送警告邮件。
 
-以下视频为样例输入1：
+样例输入视频文件为：`.\data\input.mp4`
 
-<video controls>
-    <source src="./data/input.mp4" type="video/mp4">
-</video>
+样例输出视频文件为：`.\result\output.mp4`
 
-经过模型预测到人体姿态并绘制在视频上，样例输出1如下：
-
-<video controls>
-    <source src="./result/output.mp4" type="video/mp4">
-</video>
+[点击查看原项目README.md](.\orig_README.md)
